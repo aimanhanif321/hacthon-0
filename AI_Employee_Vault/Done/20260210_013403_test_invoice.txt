@@ -1,0 +1,14 @@
+INVOICE #2026-001
+
+From: Acme Corp
+To: My Business LLC
+Date: 2026-02-10
+
+Items:
+- Web Development Services: $2,500
+- Hosting (3 months): $150
+
+Total: $2,650
+Due: 2026-02-24
+
+Payment Terms: Net 14

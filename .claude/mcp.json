@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "email-server": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "mcp_servers.email_server"],
+      "cwd": "."
+    },
+    "odoo-server": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "mcp_servers.odoo_server"],
+      "cwd": "."
+    },
+    "social-server": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "mcp_servers.social_server"],
+      "cwd": "."
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run python:*)",
+      "Bash(uv add:*)",
+      "Bash(uv lock:*)",
+      "Bash(uv run:*)",
+      "Bash(winget install:*)",
+      "Bash(\"/c/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az\" version)",
+      "Bash(az version:*)",
+      "Bash(az login:*)",
+      "Bash(\"/c/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az\" login)",
+      "Bash(az container create:*)",
+      "Bash(curl:*)",
+      "Bash(gh auth:*)",
+      "Bash(export PATH=\"/c/Program Files/GitHub CLI:$PATH\")",
+      "Bash(gh repo create:*)",
+      "Bash(git add:*)"
+    ]
+  },
+  "hooks": {
+    "stop": [
+      {
+        "command": "uv run python .claude/hooks/stop.py",
+        "timeout": 10000
+      }
+    ]
+  }
+}

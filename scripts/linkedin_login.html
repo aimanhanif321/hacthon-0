@@ -1,0 +1,15 @@
+<html>
+<body>
+<h2>LinkedIn OAuth - Click the button below</h2>
+<form action="https://www.linkedin.com/oauth/v2/authorization" method="GET">
+  <input type="hidden" name="response_type" value="code" />
+  <input type="hidden" name="client_id" value="774gezua0szema" />
+  <input type="hidden" name="redirect_uri" value="http://localhost:9876/callback" />
+  <input type="hidden" name="scope" value="openid profile w_member_social" />
+  <input type="hidden" name="state" value="ai_employee_auth" />
+  <button type="submit" style="font-size:20px;padding:15px 30px;cursor:pointer;">
+    Authorize with LinkedIn
+  </button>
+</form>
+</body>
+</html>
