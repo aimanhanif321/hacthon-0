@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Employee Cloud Zone
+After=network.target
+
+[Service]
+Type=simple
+User=aiemployee
+WorkingDirectory=/opt/ai-employee
+EnvironmentFile=/opt/ai-employee/.env
+Environment=ZONE=cloud
+Environment=VAULT_SYNC_ENABLED=true
+ExecStart=/root/.cargo/bin/uv run python main.py --scheduler
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

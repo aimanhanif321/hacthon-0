@@ -36,6 +36,14 @@ logger = logging.getLogger("Orchestrator")
 
 VAULT_PATH = Path(__file__).parent / "AI_Employee_Vault"
 
+# Zone system: cloud handles triage/drafts, local handles approved actions
+ZONE = os.getenv("ZONE", "local")
+
+# Task prefixes owned by cloud zone
+CLOUD_PREFIXES = ("EMAIL_", "FILE_", "TASK_", "LINKEDIN_", "FB_", "IG_", "TWEET_", "ODOO_")
+# Task prefixes owned by local zone
+LOCAL_PREFIXES = ("WHATSAPP_",)
+
 # Frontmatter keys that signal a task needs planning instead of direct execution
 COMPLEX_TASK_INDICATORS = {"multi_step", "complex", "project"}
 
@@ -74,15 +82,36 @@ def needs_planning(task_content: str) -> bool:
 
 
 def get_pending_tasks(vault: Path) -> list[Path]:
-    """Get all pending .md action files from /Needs_Action."""
+    """Get all pending .md action files from /Needs_Action, filtered by zone."""
     needs_action = vault / "Needs_Action"
     if not needs_action.exists():
         return []
     tasks = sorted(needs_action.glob("*.md"), key=lambda p: p.stat().st_mtime)
-    return [t for t in tasks if t.stem.startswith((
-        "FILE_", "EMAIL_", "TASK_", "LINKEDIN_",
-        "FB_", "IG_", "TWEET_", "ODOO_",
-    ))]
+
+    all_known = CLOUD_PREFIXES + LOCAL_PREFIXES
+    result = []
+    for t in tasks:
+        name = t.stem
+        if ZONE == "cloud":
+            if name.startswith(CLOUD_PREFIXES):
+                result.append(t)
+            elif name.startswith(LOCAL_PREFIXES):
+                logger.info(f"[Zone:{ZONE}] Skipping {name} — owned by other zone")
+            elif name.startswith(all_known):
+                pass  # already handled
+            else:
+                # Unknown prefix — cloud processes it
+                result.append(t)
+        else:
+            # local zone
+            if name.startswith(LOCAL_PREFIXES):
+                result.append(t)
+            elif name.startswith(CLOUD_PREFIXES):
+                logger.info(f"[Zone:{ZONE}] Skipping {name} — owned by other zone")
+            else:
+                # Unknown prefix — local processes it (backwards compat)
+                result.append(t)
+    return result
 
 
 def get_approved_actions(vault: Path) -> list[Path]:
@@ -349,13 +378,19 @@ Respond with a brief summary of what you did or what needs to happen next."""
 
 def process_approved_actions(vault: Path):
     """
-    Process files in /Approved folder.
+    Process files in /Approved folder.  LOCAL zone only.
 
     Reads the frontmatter 'action' field to determine what to execute:
     - email_send: Send email via MCP server
     - linkedin_post: Publish to LinkedIn
     - general: Process via Claude
     """
+    if ZONE == "cloud":
+        approved_files = get_approved_actions(vault)
+        if approved_files:
+            logger.info(f"[Zone:{ZONE}] Skipping {len(approved_files)} approved action(s) — owned by local zone")
+        return
+
     approved_files = get_approved_actions(vault)
     if not approved_files:
         return
@@ -449,6 +484,9 @@ Carry out the approved action and provide a brief summary."""
         # Move to Done
         move_to_done(approved_file, vault)
 
+    # Sync vault immediately after executing approved actions
+    _try_vault_sync(vault)
+
 
 def process_rejected_actions(vault: Path):
     """Log and archive rejected actions from /Rejected folder."""
@@ -470,7 +508,12 @@ def process_rejected_actions(vault: Path):
 
 
 def update_dashboard(vault: Path):
-    """Update Dashboard.md with current status."""
+    """Update Dashboard.md with current status. Respects single-writer rule."""
+    dashboard_zone = os.getenv("DASHBOARD_ZONE", "cloud")
+    if ZONE != dashboard_zone:
+        logger.info(f"[Zone:{ZONE}] Skipping dashboard update — owned by {dashboard_zone} zone")
+        return
+
     folders = {
         "Needs_Action": 0,
         "In_Progress": 0,
@@ -501,11 +544,25 @@ def update_dashboard(vault: Path):
     odoo_url = os.environ.get("ODOO_URL", "not configured")
     odoo_status = f"Configured ({odoo_url})" if odoo_url != "not configured" else "Not configured"
 
+    # Odoo health from ServiceHealthChecker
+    odoo_health_line = odoo_status
+    try:
+        from utils.retry import health
+        odoo_info = health.get_status().get("odoo")
+        if odoo_info:
+            icon = "OK" if odoo_info["healthy"] else "DEGRADED"
+            odoo_health_line = f"{icon} — last check {odoo_info['last_check']}"
+            if odoo_info.get("last_error"):
+                odoo_health_line += f" (error: {odoo_info['last_error']})"
+    except Exception:
+        pass
+
     now = datetime.now(timezone.utc).isoformat()
 
     dashboard = f"""---
 last_updated: {now}
-version: 0.3.0
+version: 0.4.0
+zone: {ZONE}
 ---
 
 # AI Employee Dashboard
@@ -513,11 +570,12 @@ version: 0.3.0
 ## System Status
 | Component | Status | Last Check |
 |-----------|--------|------------|
+| Zone | **{ZONE}** | {now} |
 | File Watcher | Check manually | {now} |
 | Gmail Watcher | Check manually | {now} |
 | Orchestrator | Active | {now} |
 | Scheduler | Check manually | {now} |
-| Odoo (Accounting) | {odoo_status} | {now} |
+| Odoo (Accounting) | {odoo_health_line} | {now} |
 
 ## Inbox Summary
 - **Pending Actions**: {folders['Needs_Action']}
@@ -547,6 +605,32 @@ _Updated automatically by Orchestrator_
     logger.info("Dashboard updated")
 
 
+def _try_vault_sync(vault: Path):
+    """Call vault sync if enabled. Logs errors but never raises."""
+    if os.getenv("VAULT_SYNC_ENABLED", "false").lower() != "true":
+        return
+    try:
+        from utils.vault_sync import sync_vault
+        result = sync_vault(vault)
+        if result.get("error"):
+            logger.warning(f"Vault sync error: {result['error']}")
+    except Exception as e:
+        logger.warning(f"Vault sync failed: {e}")
+
+
+def notify_whatsapp_if_local(file_path: Path, vault: Path):
+    """Send WhatsApp notification for a new Pending_Approval file (local zone only)."""
+    if ZONE != "local":
+        return
+    if os.getenv("WHATSAPP_ENABLED", "false").lower() != "true":
+        return
+    try:
+        from skills.whatsapp_notifier import send_approval_request
+        send_approval_request(file_path, vault)
+    except Exception as e:
+        logger.warning(f"WhatsApp notification failed for {file_path.name}: {e}")
+
+
 def run_once(vault: Path):
     """Process all pending tasks, approved actions, and rejected items once."""
     # Process pending tasks
@@ -566,6 +650,9 @@ def run_once(vault: Path):
         update_dashboard(vault)
     else:
         logger.info("No pending tasks or actions found")
+
+    # Sync vault to Git after processing
+    _try_vault_sync(vault)
 
 
 def run_continuous(vault: Path, interval: int = 30):

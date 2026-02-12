@@ -1,0 +1,7 @@
+.obsidian/
+*.env
+token.json
+credentials.json
+.task_state.json
+Logs/
+Inbox/

@@ -1,8 +1,8 @@
 # AI Employee - Autonomous Digital FTE
 
-> **Tier Declaration: Gold** | Personal AI Employee Hackathon 2026
+> **Tier Declaration: Platinum** | Personal AI Employee Hackathon 2026
 
-An autonomous AI-powered Full-Time Employee (FTE) that manages your business operations using **Claude Code** as its primary reasoning engine. It handles email triage, social media management across 4 platforms, Odoo accounting, task processing, and executive reporting — all with human-in-the-loop safety controls through an Obsidian vault-based state machine.
+An autonomous AI-powered Full-Time Employee (FTE) that manages your business operations using **Claude Code** as its primary reasoning engine. It handles email triage, social media management across 4 platforms, Odoo accounting, task processing, and executive reporting — all with human-in-the-loop safety controls through an Obsidian vault-based state machine. **Platinum tier** adds cloud/local split deployment on Azure VM, Git-based vault sync, WhatsApp Business API for mobile approvals, and 24/7 operation with health monitoring.
 
 ---
 
@@ -13,7 +13,7 @@ An autonomous AI-powered Full-Time Employee (FTE) that manages your business ope
   - [Bronze Tier: Foundation](#bronze-tier-foundation)
   - [Silver Tier: Functional Assistant](#silver-tier-functional-assistant)
   - [Gold Tier: Autonomous Employee](#gold-tier-autonomous-employee)
-  - [Platinum Tier: (Planned)](#platinum-tier-planned)
+  - [Platinum Tier: Cloud/Local Split Deployment](#platinum-tier-cloudlocal-split-deployment)
 - [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
 - [Setup Guides](#setup-guides)
@@ -25,35 +25,36 @@ An autonomous AI-powered Full-Time Employee (FTE) that manages your business ope
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         LOCAL MACHINE                            │
+┌──── CLOUD ZONE (Azure VM — 24/7) ──────────────────────────────┐
+│  scheduler.py ──▶ orchestrator.py ──▶ Claude CLI                │
+│  Gmail poll, social drafts, briefings, audit, dashboard         │
+│  Health endpoint: GET /health → :8080                           │
+│  Watchers: filesystem_watcher.py, gmail_watcher.py              │
 │                                                                  │
-│  main.py ──▶ scheduler.py ──▶ orchestrator.py ──▶ Claude CLI    │
-│                    │                                    │        │
-│     ┌──────────────┴──────────────┐          ┌──────────┴─────┐ │
-│     │         Watchers            │          │  MCP Servers    │ │
-│     │  • filesystem_watcher.py    │          │  • email-server │ │
-│     │  • gmail_watcher.py         │          │  • odoo-server  │ │
-│     └─────────────────────────────┘          │  • social-server│ │
-│                                              └────────────────┘ │
-│     Skills: linkedin, meta, twitter, weekly_audit, task_state   │
-│     Utils:  retry (backoff), frontmatter, audit logging         │
-│                                                                  │
-│  AI_Employee_Vault/ (Obsidian)                                   │
+│  AI_Employee_Vault/ (Obsidian — Git synced)                      │
 │  ├── Inbox/ → Needs_Action/ → In_Progress/ → Done/              │
-│  ├── Pending_Approval/ → Approved/ or Rejected/                  │
-│  ├── Logs/, Briefings/, Plans/                                   │
-│  └── Dashboard.md, Company_Handbook.md, Business_Goals.md        │
+│  ├── Pending_Approval/ (cloud creates, local executes)           │
+│  └── Briefings/, Plans/, Dashboard.md                            │
 └──────────────────────────┬───────────────────────────────────────┘
-                           │ HTTPS / XML-RPC / REST
+                           │ Git push/pull (every 60s)
+                           │ AI_Employee_Vault/ ↔ GitHub
+┌──────────────────────────┴───────────────────────────────────────┐
+│  LOCAL ZONE (your laptop)                                         │
+│  scheduler.py ──▶ orchestrator.py (approved actions only)        │
+│  WhatsApp notifier → Pending_Approval/ → phone notification      │
+│  WhatsApp webhook (Flask :5001) → APPROVE/REJECT replies         │
+│  Executes: email_send, linkedin_post, fb_post, tweet, payments   │
+└──────────────────────────┬───────────────────────────────────────┘
+                           │ HTTPS / XML-RPC / REST / WhatsApp
               ┌────────────┼──────────────────┐
               ▼            ▼                  ▼
        ┌────────────┐ ┌──────────┐  ┌─────────────────┐
        │ Azure ACI  │ │ Neon DB  │  │   Cloud APIs     │
-       │ (Odoo 17)  │─▶│(Postgres)│  │ • Gmail API      │
-       │  :8069     │ └──────────┘  │ • LinkedIn API   │
+       │ Odoo+Caddy │─▶│(Postgres)│  │ • Gmail API      │
+       │  (HTTPS)   │ └──────────┘  │ • LinkedIn API   │
        └────────────┘               │ • Meta Graph API │
                                     │ • Twitter API v2 │
+                                    │ • WhatsApp Biz   │
                                     └─────────────────┘
 ```
 
@@ -310,17 +311,89 @@ Scheduler additions:
 
 ---
 
-### Platinum Tier: (Planned)
+### Platinum Tier: Cloud/Local Split Deployment
 
-> Cloud 24/7 deployment, work-zone specialization (Cloud vs Local), vault sync via Git, delegation protocol
+> **Requirement**: Cloud 24/7 deployment, work-zone specialization (Cloud vs Local), vault sync via Git, mobile approval workflow
 
-**Not yet implemented.** Planned additions:
-1. Deploy AI Employee to a cloud VM (always-on watchers + orchestrator + health monitoring)
-2. Cloud owns: email triage, draft replies, social post scheduling
-3. Local owns: approvals, payments, final send/post actions
-4. Vault sync via Git (Cloud ↔ Local)
-5. Claim-by-move rule: `In_Progress/<agent>/` prevents double-work
-6. Single-writer rule for `Dashboard.md` (Local only)
+#### What We Built (on top of Gold)
+
+**1. Zone System (`ZONE=cloud|local`)**
+
+Split the AI Employee into two cooperating zones:
+
+| Zone | Responsibilities |
+|------|-----------------|
+| **Cloud** (Azure VM) | Email triage, social media drafts, briefings, weekly audit, dashboard updates, Odoo reads |
+| **Local** (your laptop) | Approved action execution (email send, social post, payments), WhatsApp notifications |
+
+- `orchestrator.py`: `get_pending_tasks()` filters by task prefix per zone. Cloud handles `EMAIL_*`, `FILE_*`, `TASK_*`, `LINKEDIN_*`, `FB_*`, `IG_*`, `TWEET_*`, `ODOO_*`. Local handles `WHATSAPP_*` and unmatched.
+- `process_approved_actions()`: Only LOCAL zone executes approved actions — cloud skips with log line
+- `scheduler.py`: Zone-gates jobs — Gmail poll/briefings/audit = cloud only, WhatsApp notify = local only
+- `main.py`: `--zone cloud|local` CLI argument overrides `ZONE` env var
+- Dashboard single-writer rule: Only `DASHBOARD_ZONE` (cloud by default) updates `Dashboard.md`
+
+**2. Vault Git Sync (`utils/vault_sync.py`)**
+
+Turns `AI_Employee_Vault/` into a Git-synced repository between zones:
+- `sync_vault(vault)`: Pull (rebase), stage `*.md` only, commit with `[{ZONE}] auto-sync {timestamp}`, push
+- `pull_only(vault)`: Pull without pushing (read-only sync)
+- Scheduled every 60 seconds via `job_vault_sync()` (configurable via `VAULT_SYNC_INTERVAL`)
+- Also triggers after `process_approved_actions()` and at end of `run_once()`
+- `AI_Employee_Vault/.gitignore` excludes `.obsidian/`, `Logs/`, `Inbox/`, credentials
+- Commit messages include zone attribution: `[cloud] auto-sync 2026-02-12T10:00:00Z`
+
+**3. Azure VM Deployment (24/7 Cloud Zone)**
+
+- `scripts/vm_bootstrap.sh`: One-command setup (git, Python 3.11, Node.js 20, Claude Code CLI, uv)
+- `scripts/ai-employee-cloud.service`: systemd unit with `Restart=always`, `RestartSec=10`
+- `docs/AZURE_VM_SETUP.md`: Step-by-step guide (VM creation, SSH, bootstrap, systemd, verification)
+- Cost: ~$35/month (Standard_B2s VM + disk + public IP)
+
+**4. HTTP Health Endpoint (`utils/health_server.py`)**
+
+- Daemon thread serving `GET /health` on port 8080
+- Returns JSON: `{"status": "ok", "zone": "cloud", "timestamp": "...", "vault_ok": true, "services": {...}}`
+- Auto-started by `run_scheduler()` on boot
+- Uses `ServiceHealthChecker` singleton for per-service health status
+- `last_check_age_seconds(service)` method added to `utils/retry.py`
+
+**5. WhatsApp Business API (`skills/whatsapp_notifier.py`)**
+
+Mobile-first approval workflow:
+- `send_approval_request(file_path, vault)`: POST to Meta Graph API WhatsApp endpoint
+- Message format: "AI Employee needs approval: File: X, Action: Y, Reply APPROVE/REJECT filename"
+- `process_whatsapp_reply(reply_text, vault)`: Parses "APPROVE filename" / "REJECT filename", moves file
+- `utils/whatsapp_webhook.py`: Flask app with GET/POST `/webhook` routes
+  - GET: Meta verification challenge
+  - POST: Inbound message handler → calls `process_whatsapp_reply()`
+- Scheduler: `job_notify_pending_approvals()` every 5 min (local zone) — stamps files with `<!-- whatsapp_notified: true -->`
+- Respects `DRY_RUN` mode
+- `docs/WHATSAPP_SETUP.md`: Meta Developer Console setup, ngrok for hackathon, test flow
+
+**6. Odoo Hardening**
+
+- `scripts/aci-caddy.yaml`: Multi-container ACI spec — Odoo + Caddy reverse proxy for auto-TLS (Let's Encrypt)
+- `scripts/odoo_backup.sh`: Nightly `pg_dump` from Neon DB, 7-day retention
+- Enhanced `job_odoo_health_check()`: On failure, writes `odoo_degraded.flag` to `Logs/` and audits
+- Dashboard shows Odoo health status from `ServiceHealthChecker` (OK/DEGRADED + last check time)
+
+**7. Demo Gate (`scripts/demo_gate.sh`)**
+
+Automated end-to-end verification:
+1. Checks vault structure (10 folders, 3 config files)
+2. Drops test `EMAIL_*.md` in `Needs_Action/`
+3. Waits for orchestrator processing (max 90s)
+4. Verifies file in `Done/` and log entry
+5. Checks health endpoint
+6. Checks vault git status
+7. Reports PASS/FAIL summary
+
+**8. Platinum Documentation**
+- `docs/AZURE_VM_SETUP.md` — VM deployment guide
+- `docs/WHATSAPP_SETUP.md` — WhatsApp API configuration
+- `docs/DEMO.md` — Hackathon demo script with talking points
+- Updated `Company_Handbook.md` — Zone ownership rules, WhatsApp approval rules
+- Updated `CLAUDE.md` — `/whatsapp-notify` skill definition
 
 ---
 
@@ -358,10 +431,12 @@ uv run python main.py --scheduler
 ### Run Modes
 
 ```bash
-uv run python main.py                  # File watcher only
-uv run python main.py --orchestrator   # Orchestrator only (processes tasks)
-uv run python main.py --scheduler      # Full scheduler (all watchers + orchestrator + jobs)
-uv run python main.py --once           # Process pending tasks once and exit
+uv run python main.py                          # File watcher only
+uv run python main.py --orchestrator           # Orchestrator only (processes tasks)
+uv run python main.py --scheduler              # Full scheduler (all watchers + orchestrator + jobs)
+uv run python main.py --scheduler --zone cloud # Cloud zone (Azure VM - triage, drafts, briefings)
+uv run python main.py --scheduler --zone local # Local zone (approvals, execution, WhatsApp)
+uv run python main.py --once                   # Process pending tasks once and exit
 ```
 
 ---
@@ -370,10 +445,10 @@ uv run python main.py --once           # Process pending tasks once and exit
 
 ```
 ai_employee/
-├── main.py                    # Entry point (argparse: --once, --scheduler, --orchestrator)
-├── orchestrator.py            # Core coordinator: tasks → Claude CLI → skills → vault
-├── scheduler.py               # Job scheduler (gmail poll, social drafts, audit, health check)
-├── pyproject.toml             # Dependencies (httpx, watchdog, tweepy, schedule, google-api)
+├── main.py                    # Entry point (--once, --scheduler, --orchestrator, --zone)
+├── orchestrator.py            # Core coordinator: zone-aware tasks → Claude CLI → skills → vault
+├── scheduler.py               # Zone-aware job scheduler (cloud/local gated jobs)
+├── pyproject.toml             # Dependencies (httpx, watchdog, tweepy, schedule, flask, google-api)
 │
 ├── watchers/
 │   ├── filesystem_watcher.py  # Watchdog-based Inbox/ monitor (Bronze)
@@ -384,7 +459,8 @@ ai_employee/
 │   ├── meta_poster.py         # Facebook + Instagram via Meta Graph API (Gold)
 │   ├── twitter_poster.py      # Twitter/X via tweepy API v2 (Gold)
 │   ├── weekly_audit.py        # Weekly audit + CEO briefing generation (Gold)
-│   └── task_state.py          # Ralph Wiggum multi-step task tracking (Gold)
+│   ├── task_state.py          # Ralph Wiggum multi-step task tracking (Gold)
+│   └── whatsapp_notifier.py   # WhatsApp approval requests + reply processing (Platinum)
 │
 ├── mcp_servers/
 │   ├── email_server.py        # Gmail send/draft/list MCP tools (Silver)
@@ -393,36 +469,53 @@ ai_employee/
 │
 ├── utils/
 │   ├── __init__.py
-│   ├── retry.py               # Exponential backoff + health checker (Gold)
+│   ├── retry.py               # Exponential backoff + health checker (Gold+Platinum)
 │   ├── frontmatter.py         # YAML frontmatter parser/creator (Gold)
-│   └── audit.py               # Audit logging wrapper (Gold)
+│   ├── audit.py               # Audit logging wrapper (Gold)
+│   ├── vault_sync.py          # Git-based vault sync between zones (Platinum)
+│   ├── health_server.py       # HTTP health endpoint daemon (Platinum)
+│   └── whatsapp_webhook.py    # Flask webhook for inbound WhatsApp (Platinum)
 │
 ├── scripts/
-│   └── meta_auth.py           # Meta token exchange helper (Gold)
+│   ├── meta_auth.py           # Meta token exchange helper (Gold)
+│   ├── vm_bootstrap.sh        # Azure VM one-time setup (Platinum)
+│   ├── ai-employee-cloud.service  # systemd unit for cloud zone (Platinum)
+│   ├── aci-caddy.yaml         # Odoo + Caddy HTTPS ACI spec (Platinum)
+│   ├── odoo_backup.sh         # Neon DB nightly backup (Platinum)
+│   └── demo_gate.sh           # End-to-end Platinum demo verification (Platinum)
 │
 ├── .claude/
 │   ├── mcp.json               # MCP server registrations (3 servers)
 │   ├── hooks/stop.py          # Ralph Wiggum stop hook (Gold)
 │   └── settings.local.json    # Claude Code permissions + hooks config
 │
-├── AI_Employee_Vault/         # Obsidian vault (file-based state machine)
+├── AI_Employee_Vault/         # Obsidian vault (file-based state machine, Git synced)
+│   ├── .gitignore             # Vault-level gitignore (Platinum)
 │   ├── Inbox/                 # Drop files here → auto-triaged
 │   ├── Needs_Action/          # Pending tasks with YAML frontmatter
 │   ├── In_Progress/           # Currently claimed by orchestrator
-│   ├── Pending_Approval/      # Awaiting human review
-│   ├── Approved/              # Human-approved → auto-executed
+│   ├── Pending_Approval/      # Awaiting human review (WhatsApp notified)
+│   ├── Approved/              # Human-approved → auto-executed (local zone)
 │   ├── Rejected/              # Denied → archived
 │   ├── Done/                  # Completed (timestamped)
 │   ├── Logs/                  # JSON audit logs (per-day)
 │   ├── Briefings/             # Daily/weekly reports + CEO briefings
 │   ├── Plans/                 # Claude-generated task plans
-│   ├── Dashboard.md           # Live status (auto-updated)
-│   ├── Company_Handbook.md    # Business rules AI must follow
+│   ├── Dashboard.md           # Live status (auto-updated by dashboard zone)
+│   ├── Company_Handbook.md    # Business rules + zone ownership rules
 │   └── Business_Goals.md      # Content themes per platform
 │
-├── docs/                      # Setup guides (Gmail, LinkedIn, Meta, Twitter, Odoo, Architecture)
-├── CLAUDE.md                  # 15 agent skill definitions
-├── .env.example               # Environment variable template (no real credentials)
+├── docs/                      # Setup guides
+│   ├── ARCHITECTURE.md        # System diagram + data flow
+│   ├── AZURE_VM_SETUP.md      # Cloud zone VM deployment (Platinum)
+│   ├── WHATSAPP_SETUP.md      # WhatsApp Business API setup (Platinum)
+│   ├── DEMO.md                # Hackathon demo script (Platinum)
+│   ├── ODOO_SETUP.md          # Neon DB + Azure ACI deployment
+│   ├── META_SETUP.md, TWITTER_SETUP.md, GMAIL_SETUP.md, LINKEDIN_SETUP.md
+│   └── LESSONS_LEARNED.md     # Architecture decisions
+│
+├── CLAUDE.md                  # 16 agent skill definitions (incl. /whatsapp-notify)
+├── .env.example               # Environment template (zone + vault sync + WhatsApp vars)
 └── .gitignore                 # Protects .env, credentials, tokens
 ```
 
@@ -437,6 +530,9 @@ ai_employee/
 | Facebook/Instagram | [`docs/META_SETUP.md`](docs/META_SETUP.md) | Meta Developer App, Page Access Token |
 | Twitter/X | [`docs/TWITTER_SETUP.md`](docs/TWITTER_SETUP.md) | Twitter Developer Portal, API v2 keys |
 | Odoo + Azure | [`docs/ODOO_SETUP.md`](docs/ODOO_SETUP.md) | Azure account + Neon DB (both have free tiers) |
+| Azure VM (Cloud Zone) | [`docs/AZURE_VM_SETUP.md`](docs/AZURE_VM_SETUP.md) | Azure account, SSH key pair |
+| WhatsApp Business | [`docs/WHATSAPP_SETUP.md`](docs/WHATSAPP_SETUP.md) | Meta Developer App with WhatsApp product |
+| Demo Script | [`docs/DEMO.md`](docs/DEMO.md) | All of the above running |
 
 ---
 
@@ -488,17 +584,19 @@ ai_employee/
 
 ## Scheduled Jobs
 
-| Time | Day | Job | Tier |
-|------|-----|-----|------|
-| Every 30s | Always | Process pending tasks | Silver |
-| Every 2 min | Always | Poll Gmail for new emails | Silver |
-| Every 5 min | Always | Odoo health check | Gold |
-| 08:00 | Daily | Generate daily briefing | Silver |
-| 10:00 | Monday | LinkedIn post draft | Silver |
-| 10:30 | Tuesday | Facebook post draft | Gold |
-| 10:30 | Wednesday | Twitter/X post draft | Gold |
-| 10:30 | Thursday | Instagram post draft | Gold |
-| 20:00 | Sunday | Weekly audit + CEO briefing | Gold |
+| Time | Day | Job | Zone | Tier |
+|------|-----|-----|------|------|
+| Every 30s | Always | Process pending tasks | Both | Silver |
+| Every 60s | Always | Vault Git sync | Both | Platinum |
+| Every 2 min | Always | Poll Gmail for new emails | Cloud | Silver |
+| Every 5 min | Always | Odoo health check | Both | Gold |
+| Every 5 min | Always | WhatsApp notify pending | Local | Platinum |
+| 08:00 | Daily | Generate daily briefing | Cloud | Silver |
+| 10:00 | Monday | LinkedIn post draft | Cloud | Silver |
+| 10:30 | Tuesday | Facebook post draft | Cloud | Gold |
+| 10:30 | Wednesday | Twitter/X post draft | Cloud | Gold |
+| 10:30 | Thursday | Instagram post draft | Cloud | Gold |
+| 20:00 | Sunday | Weekly audit + CEO briefing | Cloud | Gold |
 
 ---
 
@@ -506,9 +604,10 @@ ai_employee/
 
 | Component | Service | Cost |
 |-----------|---------|------|
-| Odoo 17 ERP | Azure Container Instances | ~$1.50/day (stoppable) |
+| AI Employee Cloud Zone | Azure VM (Standard_B2s) | ~$35/month (deallocatable) |
+| Odoo 17 + Caddy (HTTPS) | Azure Container Instances | ~$1.50/day (stoppable) |
 | PostgreSQL | Neon DB (serverless) | Free tier (0.5 GB) |
-| Gmail, LinkedIn, Meta, Twitter APIs | Cloud APIs | Free tier |
+| Gmail, LinkedIn, Meta, Twitter, WhatsApp APIs | Cloud APIs | Free tier |
 
 ```bash
 # Stop Odoo (pause billing):
@@ -516,12 +615,19 @@ az container stop --resource-group ai-employee-rg --name odoo-server
 
 # Start again:
 az container start --resource-group ai-employee-rg --name odoo-server
+
+# Stop VM (pause billing):
+az vm deallocate --resource-group ai-employee-rg --name ai-employee-vm
+
+# Start VM:
+az vm start --resource-group ai-employee-rg --name ai-employee-vm
 ```
 
 ---
 
 ## Demo Highlights
 
+### Gold Tier
 1. **File Drop Triage**: Drop any file in `Inbox/` → watchdog detects it → action file created in `Needs_Action/` with auto-classified priority
 2. **Email Processing**: Gmail watcher polls every 2 min → `EMAIL_*.md` in `Needs_Action/` → Claude triages and drafts replies → approval workflow
 3. **Social Media Workflow**: Scheduled drafts (Mon-Thu) → Claude generates content from `Business_Goals.md` → human approves in Obsidian → auto-publishes to FB/IG/LinkedIn/Twitter
@@ -532,6 +638,16 @@ az container start --resource-group ai-employee-rg --name odoo-server
 8. **CEO Briefing**: Weekly auto-generated `Briefings/YYYY-WXX_CEO_Briefing.md` with KPI tables
 9. **Ralph Wiggum Loop**: Complex task → `.task_state.json` → stop hook blocks Claude exit → continues until all steps done (max 10 iterations)
 10. **DRY_RUN Safety**: Set `DRY_RUN=true` → all actions logged but nothing executes externally
+
+### Platinum Tier
+11. **Cloud/Local Zones**: `ZONE=cloud` on Azure VM triages and drafts; `ZONE=local` on laptop executes approved actions — zero trust execution model
+12. **Vault Git Sync**: `[cloud] auto-sync` / `[local] auto-sync` commits every 60s — Git as the message bus between zones
+13. **WhatsApp Mobile Approvals**: Pending approval → WhatsApp notification to your phone → reply `APPROVE filename` → webhook moves file → orchestrator executes
+14. **24/7 Operation**: systemd service on Azure VM with `Restart=always` — kill the process, it's back in 10 seconds
+15. **Health Endpoint**: `curl http://VM_IP:8080/health` → JSON status with zone, vault, and per-service health
+16. **Odoo HTTPS**: Caddy reverse proxy auto-provisions Let's Encrypt TLS for the ACI domain
+17. **Nightly DB Backup**: `pg_dump` from Neon DB → `/opt/ai-employee/backups/` with 7-day retention
+18. **Demo Gate**: `bash scripts/demo_gate.sh` → automated end-to-end verification (vault structure, processing, logging, health, git)
 
 ---
 
@@ -544,16 +660,21 @@ az container start --resource-group ai-employee-rg --name odoo-server
 | Package Manager | uv |
 | MCP Protocol | JSON-RPC 2.0 over stdin/stdout |
 | Vault | Obsidian (file-based state machine) |
+| Vault Sync | Git push/pull (Platinum) |
 | Email | Gmail API + Google OAuth 2.0 |
 | LinkedIn | LinkedIn REST API v2 |
 | Facebook/Instagram | Meta Graph API v19.0 |
 | Twitter/X | Twitter API v2 via tweepy |
+| WhatsApp | Meta Graph API WhatsApp Business (Platinum) |
 | Accounting | Odoo 17 Community via XML-RPC |
-| Cloud Hosting | Azure Container Instances |
+| Cloud Zone | Azure VM (Ubuntu 22.04) + systemd (Platinum) |
+| Odoo Hosting | Azure Container Instances + Caddy TLS |
 | Database | Neon DB (serverless PostgreSQL) |
 | Scheduling | schedule library |
 | File Watching | watchdog library |
 | HTTP Client | httpx |
+| Webhook Server | Flask (Platinum) |
+| Health Endpoint | http.server (stdlib, Platinum) |
 
 ---
 

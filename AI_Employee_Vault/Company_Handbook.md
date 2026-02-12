@@ -51,7 +51,36 @@ version: 0.1.0
 ## Approval Workflow
 1. Sensitive actions create a file in `/Pending_Approval/`
 2. Actions requiring approval: sending emails, social media posts, payments over $100, new vendor payments
-3. Human moves file to `/Approved/` to authorize
-4. Human moves file to `/Rejected/` to deny
+3. Human moves file to `/Approved/` to authorize (or replies APPROVE on WhatsApp)
+4. Human moves file to `/Rejected/` to deny (or replies REJECT on WhatsApp)
 5. Approved actions are executed and logged
 6. Orchestrator automatically picks up approved/rejected files
+
+## Zone Ownership Rules (Platinum)
+The system operates in two zones: **cloud** and **local**.
+
+### Cloud Zone Responsibilities
+- Email triage (EMAIL_*), social media drafts (FB_*, TWEET_*, IG_*, LINKEDIN_*)
+- File drop processing (FILE_*), Odoo read operations
+- Briefings, audit reports, CEO briefings
+- Dashboard updates (single-writer rule)
+
+### Local Zone Responsibilities
+- Approved action execution (email_send, linkedin_post, facebook_post, instagram_post, twitter_post)
+- Payments over $100 (odoo_payment) — requires human approval first
+- WhatsApp notifications (WHATSAPP_*)
+- Human-in-the-loop approval processing
+
+### Zone Rules
+1. Cloud zone NEVER executes approved actions — only local zone does
+2. Dashboard.md is owned by the zone specified in DASHBOARD_ZONE (cloud by default)
+3. Both zones sync the vault via Git every 60 seconds
+4. Zone attribution appears in all git commit messages: `[cloud]` or `[local]`
+
+## WhatsApp Approval Rules (Platinum)
+1. WhatsApp notifications are sent for new files in `Pending_Approval/` (local zone only)
+2. Files are stamped with `<!-- whatsapp_notified: true -->` after notification
+3. Human can reply `APPROVE <filename>` or `REJECT <filename>` on WhatsApp
+4. WhatsApp webhook processes the reply and moves the file accordingly
+5. All WhatsApp actions are logged in `Logs/`
+6. DRY_RUN mode suppresses actual WhatsApp messages

@@ -85,6 +85,14 @@ class ServiceHealthChecker:
     def get_status(self) -> dict[str, dict]:
         return dict(self._status)
 
+    def last_check_age_seconds(self, service: str) -> float | None:
+        """Seconds since last health check for *service*, or None if never checked."""
+        entry = self._status.get(service)
+        if not entry:
+            return None
+        last = datetime.fromisoformat(entry["last_check"])
+        return (datetime.now(timezone.utc) - last).total_seconds()
+
     def summary(self) -> str:
         if not self._status:
             return "No services checked yet."

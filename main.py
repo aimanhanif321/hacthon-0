@@ -2,6 +2,7 @@
 AI Employee - Main Entry Point
 
 Starts the File System Watcher, Orchestrator, and Scheduler.
+Supports zone selection for cloud/local split deployment.
 
 Usage:
     uv run python main.py                  # Start the file watcher only
@@ -9,8 +10,10 @@ Usage:
     uv run python main.py --scheduler      # Start full scheduler (watcher + orchestrator + jobs)
     uv run python main.py --all            # Alias for --scheduler
     uv run python main.py --once           # Process pending tasks once and exit
+    uv run python main.py --zone cloud     # Override ZONE env var
 """
 
+import os
 import argparse
 import logging
 from pathlib import Path
@@ -45,9 +48,22 @@ def main():
         "--once", action="store_true",
         help="Process pending tasks once and exit"
     )
+    parser.add_argument(
+        "--zone", type=str, choices=["cloud", "local"], default=None,
+        help="Override ZONE env var (cloud or local)"
+    )
     args = parser.parse_args()
 
-    logger.info(f"AI Employee starting. Vault: {VAULT_PATH}")
+    # Apply --zone override before any module reads ZONE
+    if args.zone:
+        os.environ["ZONE"] = args.zone
+        # Also update the module-level ZONE in orchestrator
+        import orchestrator
+        orchestrator.ZONE = args.zone
+        logger.info(f"Zone overridden via CLI: {args.zone}")
+
+    zone = os.getenv("ZONE", "local")
+    logger.info(f"AI Employee starting. Vault: {VAULT_PATH}  Zone: {zone}")
 
     if args.once:
         logger.info("Running one-time processing...")

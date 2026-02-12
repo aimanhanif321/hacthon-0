@@ -1,0 +1,72 @@
+# aci-caddy.yaml — Multi-container ACI deployment: Odoo + Caddy (TLS reverse proxy)
+#
+# Caddy auto-provisions a Let's Encrypt certificate for the ACI FQDN.
+# This replaces the single-container Odoo deployment with HTTPS termination.
+#
+# Deploy:
+#   az container create --resource-group ai-employee-rg --file scripts/aci-caddy.yaml
+#
+# Access:
+#   https://ai-employee-odoo.eastus.azurecontainer.io/web/login
+
+apiVersion: "2021-10-01"
+location: eastus
+name: odoo-server
+type: Microsoft.ContainerInstance/containerGroups
+properties:
+  osType: Linux
+  ipAddress:
+    type: Public
+    dnsNameLabel: ai-employee-odoo
+    ports:
+      - protocol: TCP
+        port: 443
+      - protocol: TCP
+        port: 80
+  containers:
+    # --- Odoo 17 container ---
+    - name: odoo
+      properties:
+        image: odoo:17
+        ports:
+          - port: 8069
+        resources:
+          requests:
+            cpu: 1.0
+            memoryInGb: 1.5
+        environmentVariables:
+          - name: HOST
+            value: "${NEON_DB_HOST}"
+          - name: PORT
+            value: "5432"
+          - name: USER
+            value: "${NEON_DB_USER}"
+          - name: PASSWORD
+            secureValue: "${NEON_DB_PASSWORD}"
+          - name: DATABASE
+            value: "neondb"
+
+    # --- Caddy reverse proxy (auto-TLS) ---
+    - name: caddy
+      properties:
+        image: caddy:2-alpine
+        ports:
+          - port: 443
+          - port: 80
+        resources:
+          requests:
+            cpu: 0.5
+            memoryInGb: 0.5
+        command:
+          - caddy
+          - reverse-proxy
+          - "--from"
+          - "ai-employee-odoo.eastus.azurecontainer.io"
+          - "--to"
+          - "localhost:8069"
+        volumeMounts:
+          - name: caddy-data
+            mountPath: /data
+  volumes:
+    - name: caddy-data
+      emptyDir: {}

@@ -3,13 +3,17 @@ Scheduler - Runs all AI Employee jobs on a schedule.
 
 Combines the filesystem watcher, Gmail watcher, orchestrator,
 and scheduled tasks into a single entry point.
+Zone-aware: cloud and local zones run different subsets of jobs.
 
 Jobs:
-    - Every 2 min:  Poll Gmail for new emails
-    - Every 30 sec: Process /Needs_Action tasks
-    - Every 30 sec: Check /Approved for approved actions
-    - Daily 8:00 AM: Generate daily briefing
-    - Daily 10:00 AM: Generate LinkedIn post draft
+    - Every 2 min:  Poll Gmail for new emails (cloud)
+    - Every 30 sec: Process /Needs_Action tasks (both)
+    - Every 5 min:  Odoo health check (both)
+    - Every 60 sec: Vault Git sync (both, if VAULT_SYNC_ENABLED)
+    - Every 5 min:  WhatsApp notify pending approvals (local)
+    - Daily 8:00 AM: Generate daily briefing (cloud)
+    - Daily 10:00 AM: Generate LinkedIn post draft (cloud)
+    - Sunday 8:00 PM: Weekly audit + CEO briefing (cloud)
 
 Usage:
     uv run python scheduler.py
@@ -26,7 +30,10 @@ from datetime import datetime, timezone
 import schedule
 import time
 
-from orchestrator import run_once, update_dashboard, invoke_claude, log_action, VAULT_PATH
+from orchestrator import (
+    run_once, update_dashboard, invoke_claude, log_action,
+    VAULT_PATH, ZONE,
+)
 from watchers.filesystem_watcher import run_watcher
 
 logging.basicConfig(
@@ -35,6 +42,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Scheduler")
 
+
+# ---------------------------------------------------------------------------
+# Job definitions
+# ---------------------------------------------------------------------------
 
 def job_poll_gmail():
     """Poll Gmail for new unread emails."""
@@ -53,6 +64,43 @@ def job_process_tasks():
         run_once(VAULT_PATH)
     except Exception as e:
         logger.error(f"Task processing failed: {e}")
+
+
+def job_vault_sync():
+    """Sync vault via Git (pull/commit/push)."""
+    if os.getenv("VAULT_SYNC_ENABLED", "false").lower() != "true":
+        return
+    try:
+        from utils.vault_sync import sync_vault
+        result = sync_vault(VAULT_PATH)
+        if result.get("error"):
+            logger.warning(f"Vault sync error: {result['error']}")
+    except Exception as e:
+        logger.error(f"Vault sync job failed: {e}")
+
+
+def job_notify_pending_approvals():
+    """Send WhatsApp notifications for un-notified pending approvals (local only)."""
+    if os.getenv("WHATSAPP_ENABLED", "false").lower() != "true":
+        return
+    try:
+        pending_dir = VAULT_PATH / "Pending_Approval"
+        if not pending_dir.exists():
+            return
+
+        from skills.whatsapp_notifier import send_approval_request
+
+        for f in pending_dir.glob("*.md"):
+            content = f.read_text(encoding="utf-8")
+            if "<!-- whatsapp_notified: true -->" in content:
+                continue
+            logger.info(f"[WhatsApp] Notifying for: {f.name}")
+            send_approval_request(f, VAULT_PATH)
+            # Stamp the file so we don't re-notify
+            with open(f, "a", encoding="utf-8") as fh:
+                fh.write("\n<!-- whatsapp_notified: true -->\n")
+    except Exception as e:
+        logger.error(f"WhatsApp notify job failed: {e}")
 
 
 def job_daily_briefing():
@@ -248,7 +296,6 @@ def job_odoo_health_check():
     try:
         from utils.retry import health
         import httpx
-        import os
         odoo_url = os.getenv("ODOO_URL", "")
         if not odoo_url:
             return
@@ -261,7 +308,25 @@ def job_odoo_health_check():
         from utils.retry import health
         health.record_failure("odoo", str(e))
         logger.warning(f"Odoo health check failed: {e}")
+        # Write degraded flag to Logs/
+        try:
+            flag_path = VAULT_PATH / "Logs" / "odoo_degraded.flag"
+            flag_path.write_text(
+                f"Odoo health check failed at {datetime.now(timezone.utc).isoformat()}: {e}",
+                encoding="utf-8",
+            )
+            log_action(VAULT_PATH, {
+                "action_type": "odoo_health_degraded",
+                "actor": "scheduler",
+                "error": str(e)[:300],
+            })
+        except Exception:
+            pass
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _fill_social_draft(draft_path, platform: str, max_chars: int = 1300):
     """Use Claude to fill in the generated draft with actual content."""
@@ -310,39 +375,63 @@ Output ONLY the post text, nothing else."""
     })
 
 
+# ---------------------------------------------------------------------------
+# Schedule setup & runner
+# ---------------------------------------------------------------------------
+
 def setup_schedule():
-    """Configure all scheduled jobs."""
-    # High-frequency jobs
-    schedule.every(2).minutes.do(job_poll_gmail)
+    """Configure all scheduled jobs, zone-aware."""
+    sync_interval = int(os.getenv("VAULT_SYNC_INTERVAL", "60"))
+
+    # Both zones: task processing, vault sync, Odoo health
     schedule.every(30).seconds.do(job_process_tasks)
     schedule.every(5).minutes.do(job_odoo_health_check)
+    schedule.every(sync_interval).seconds.do(job_vault_sync)
 
-    # Daily jobs
-    schedule.every().day.at("08:00").do(job_daily_briefing)
+    # Cloud-only jobs
+    if ZONE == "cloud":
+        schedule.every(2).minutes.do(job_poll_gmail)
+        schedule.every().day.at("08:00").do(job_daily_briefing)
+        schedule.every().monday.at("10:00").do(job_linkedin_draft)
+        schedule.every().tuesday.at("10:30").do(job_facebook_draft)
+        schedule.every().wednesday.at("10:30").do(job_twitter_draft)
+        schedule.every().thursday.at("10:30").do(job_instagram_draft)
+        schedule.every().sunday.at("20:00").do(job_weekly_audit)
 
-    # Social media schedule
-    schedule.every().monday.at("10:00").do(job_linkedin_draft)
-    schedule.every().tuesday.at("10:30").do(job_facebook_draft)
-    schedule.every().wednesday.at("10:30").do(job_twitter_draft)
-    schedule.every().thursday.at("10:30").do(job_instagram_draft)
+    # Local-only jobs
+    if ZONE == "local":
+        schedule.every(5).minutes.do(job_notify_pending_approvals)
 
-    # Weekly audit + CEO briefing
-    schedule.every().sunday.at("20:00").do(job_weekly_audit)
-
-    logger.info("Schedule configured:")
-    logger.info("  - Gmail poll: every 2 minutes")
-    logger.info("  - Task processing: every 30 seconds")
-    logger.info("  - Odoo health check: every 5 minutes")
-    logger.info("  - Daily briefing: 8:00 AM")
-    logger.info("  - LinkedIn draft: Monday 10:00 AM")
-    logger.info("  - Facebook draft: Tuesday 10:30 AM")
-    logger.info("  - Twitter draft: Wednesday 10:30 AM")
-    logger.info("  - Instagram draft: Thursday 10:30 AM")
-    logger.info("  - Weekly audit + CEO briefing: Sunday 8:00 PM")
+    logger.info(f"Schedule configured for zone={ZONE}:")
+    logger.info("  [both]  Task processing: every 30 seconds")
+    logger.info("  [both]  Odoo health check: every 5 minutes")
+    logger.info(f"  [both]  Vault sync: every {sync_interval} seconds")
+    if ZONE == "cloud":
+        logger.info("  [cloud] Gmail poll: every 2 minutes")
+        logger.info("  [cloud] Daily briefing: 8:00 AM")
+        logger.info("  [cloud] LinkedIn draft: Monday 10:00 AM")
+        logger.info("  [cloud] Facebook draft: Tuesday 10:30 AM")
+        logger.info("  [cloud] Twitter draft: Wednesday 10:30 AM")
+        logger.info("  [cloud] Instagram draft: Thursday 10:30 AM")
+        logger.info("  [cloud] Weekly audit + CEO briefing: Sunday 8:00 PM")
+    if ZONE == "local":
+        logger.info("  [local] WhatsApp pending approval notify: every 5 minutes")
 
 
 def run_scheduler():
     """Run the scheduler loop."""
+    logger.info(f"AI Employee Scheduler starting — zone={ZONE}")
+
+    # Start health server (Phase 3) if available
+    try:
+        from utils.health_server import start_health_server
+        start_health_server()
+        logger.info("Health server started on port 8080")
+    except ImportError:
+        logger.debug("Health server module not available — skipping")
+    except Exception as e:
+        logger.warning(f"Health server failed to start: {e}")
+
     setup_schedule()
 
     # Start filesystem watcher in a background thread

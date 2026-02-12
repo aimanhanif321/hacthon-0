@@ -125,3 +125,11 @@ Run the weekly audit and generate CEO briefing:
 2. Generate `Briefings/YYYY-WXX_Weekly.md` with detailed statistics
 3. Generate `Briefings/YYYY-WXX_CEO_Briefing.md` with KPI dashboard
 4. Log the audit completion
+
+### /whatsapp-notify
+Send WhatsApp approval notifications for pending items (Platinum):
+1. Scan `Pending_Approval/` for files without `<!-- whatsapp_notified: true -->` stamp
+2. Send WhatsApp message via Meta Graph API with file name and action type
+3. Message includes instructions: "Reply APPROVE/REJECT <filename>"
+4. Stamp the file after notification to prevent re-sending
+5. Only runs on LOCAL zone — requires `WHATSAPP_ENABLED=true`

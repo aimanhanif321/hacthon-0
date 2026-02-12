@@ -1,6 +1,7 @@
 ---
-last_updated: 2026-02-11T08:26:09.238643+00:00
-version: 0.3.0
+last_updated: 2026-02-12T07:30:16.526958+00:00
+version: 0.4.0
+zone: cloud
 ---
 
 # AI Employee Dashboard
@@ -8,20 +9,21 @@ version: 0.3.0
 ## System Status
 | Component | Status | Last Check |
 |-----------|--------|------------|
-| File Watcher | Check manually | 2026-02-11T08:26:09.238643+00:00 |
-| Gmail Watcher | Check manually | 2026-02-11T08:26:09.238643+00:00 |
-| Orchestrator | Active | 2026-02-11T08:26:09.238643+00:00 |
-| Scheduler | Check manually | 2026-02-11T08:26:09.238643+00:00 |
-| Odoo (Accounting) | Not configured | 2026-02-11T08:26:09.238643+00:00 |
+| Zone | **cloud** | 2026-02-12T07:30:16.526958+00:00 |
+| File Watcher | Check manually | 2026-02-12T07:30:16.526958+00:00 |
+| Gmail Watcher | Check manually | 2026-02-12T07:30:16.526958+00:00 |
+| Orchestrator | Active | 2026-02-12T07:30:16.526958+00:00 |
+| Scheduler | Check manually | 2026-02-12T07:30:16.526958+00:00 |
+| Odoo (Accounting) | Configured (http://ai-employee-odoo.eastus.azurecontainer.io:8069) | 2026-02-12T07:30:16.526958+00:00 |
 
 ## Inbox Summary
 - **Pending Actions**: 0
 - **In Progress**: 0
-- **Completed Today**: 11
+- **Completed Today**: 6
 
 ## Approval Queue
-- **Pending Approval**: 3
-- **Social Media Drafts Pending**: 3
+- **Pending Approval**: 0
+- **Social Media Drafts Pending**: 0
 - **Approved (ready)**: 0
 - **Active Plans**: 0
 
