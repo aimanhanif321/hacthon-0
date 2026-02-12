@@ -6,6 +6,19 @@ An autonomous AI-powered Full-Time Employee (FTE) that manages your business ope
 
 ---
 
+## Live Deployment
+
+| Resource | URL |
+|----------|-----|
+| **GitHub Repo** | [github.com/aimanhanif321/hacthon-0](https://github.com/aimanhanif321/hacthon-0) |
+| **Azure VM (Cloud Zone)** | `20.64.238.101` — 24/7 Ubuntu 22.04 (Standard_B2s_v2, westus2) |
+| **Health Endpoint** | [http://20.64.238.101:8080/health](http://20.64.238.101:8080/health) |
+| **WhatsApp Webhook** | HTTPS via ngrok → Flask :5001 on VM |
+| **Odoo Accounting** | [http://ai-employee-odoo.eastus.azurecontainer.io:8069](http://ai-employee-odoo.eastus.azurecontainer.io:8069) |
+| **Database** | Neon DB (serverless PostgreSQL, eastus2) |
+
+---
+
 ## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
@@ -15,6 +28,7 @@ An autonomous AI-powered Full-Time Employee (FTE) that manages your business ope
   - [Gold Tier: Autonomous Employee](#gold-tier-autonomous-employee)
   - [Platinum Tier: Cloud/Local Split Deployment](#platinum-tier-cloudlocal-split-deployment)
 - [Quick Start](#quick-start)
+- [All Commands Reference](#all-commands-reference)
 - [Project Structure](#project-structure)
 - [Setup Guides](#setup-guides)
 - [Security Disclosure](#security-disclosure)
@@ -411,8 +425,8 @@ Automated end-to-end verification:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/ai_employee.git
-cd ai_employee
+git clone https://github.com/aimanhanif321/hacthon-0.git
+cd hacthon-0
 
 # 2. Install dependencies
 uv sync
@@ -437,6 +451,131 @@ uv run python main.py --scheduler              # Full scheduler (all watchers + 
 uv run python main.py --scheduler --zone cloud # Cloud zone (Azure VM - triage, drafts, briefings)
 uv run python main.py --scheduler --zone local # Local zone (approvals, execution, WhatsApp)
 uv run python main.py --once                   # Process pending tasks once and exit
+```
+
+---
+
+## All Commands Reference
+
+### Local Machine Commands
+
+```bash
+# === Run the AI Employee ===
+uv run python main.py                          # File watcher only (Bronze)
+uv run python main.py --orchestrator           # Orchestrator only (Silver)
+uv run python main.py --once                   # Process once and exit (Silver)
+uv run python main.py --scheduler              # Full scheduler - all jobs (Silver+)
+uv run python main.py --scheduler --zone local # Local zone only (Platinum)
+
+# === Email (Gmail) ===
+# Automatic: Gmail watcher polls every 2 minutes when scheduler is running
+# Manual check:
+ls AI_Employee_Vault/Needs_Action/EMAIL_*      # See pending emails
+ls AI_Employee_Vault/Done/*EMAIL*              # See processed emails
+
+# === LinkedIn ===
+# Automatic: Draft generated Monday 10:00 AM
+# Manual approve:
+mv AI_Employee_Vault/Pending_Approval/LINKEDIN_POST_*.md AI_Employee_Vault/Approved/
+
+# === Facebook ===
+# Automatic: Draft generated Tuesday 10:30 AM
+# Manual approve:
+mv AI_Employee_Vault/Pending_Approval/FB_POST_*.md AI_Employee_Vault/Approved/
+
+# === Twitter/X ===
+# Automatic: Draft generated Wednesday 10:30 AM
+# Manual approve:
+mv AI_Employee_Vault/Pending_Approval/TWEET_*.md AI_Employee_Vault/Approved/
+
+# === Instagram ===
+# Automatic: Draft generated Thursday 10:30 AM (add image_url to frontmatter first)
+# Manual approve:
+mv AI_Employee_Vault/Pending_Approval/IG_POST_*.md AI_Employee_Vault/Approved/
+
+# === File Drop (any file) ===
+cp yourfile.pdf AI_Employee_Vault/Inbox/       # Drop file → auto-triaged
+
+# === Vault Status ===
+cat AI_Employee_Vault/Dashboard.md             # Live dashboard
+ls AI_Employee_Vault/Needs_Action/             # Pending tasks
+ls AI_Employee_Vault/Pending_Approval/         # Awaiting human review
+ls AI_Employee_Vault/Done/                     # Completed tasks
+ls AI_Employee_Vault/Briefings/                # Reports
+cat AI_Employee_Vault/Logs/$(date +%Y-%m-%d).json  # Today's audit log
+```
+
+### Azure VM Commands (Cloud Zone)
+
+```bash
+# === VM Power Management ===
+az vm start --resource-group ai-employee-rg --name ai-employee-vm      # START (billing starts)
+az vm deallocate --resource-group ai-employee-rg --name ai-employee-vm # STOP (no charges)
+az vm show -g ai-employee-rg -n ai-employee-vm -d --query powerState -o tsv  # Check status
+
+# === SSH Access ===
+ssh -i ~/.ssh/id_rsa aiemployee@20.64.238.101
+
+# === Service Management (run after SSH) ===
+sudo systemctl start ai-employee-cloud          # Start AI Employee
+sudo systemctl stop ai-employee-cloud           # Stop AI Employee
+sudo systemctl restart ai-employee-cloud        # Restart
+sudo systemctl status ai-employee-cloud         # Check status
+sudo journalctl -u ai-employee-cloud -f         # Live logs
+
+# === WhatsApp Webhook (run after SSH) ===
+sudo systemctl status ai-employee-webhook       # Webhook status
+sudo journalctl -u ai-employee-webhook -f       # Webhook logs
+
+# === Health Check (from anywhere) ===
+curl -s http://20.64.238.101:8080/health | python -m json.tool
+```
+
+### Odoo Accounting Commands
+
+```bash
+# === Container Management ===
+az container start --resource-group ai-employee-rg --name odoo-server  # Start Odoo
+az container stop --resource-group ai-employee-rg --name odoo-server   # Stop (save credits)
+az container show -g ai-employee-rg -n odoo-server --query instanceView.state -o tsv  # Status
+
+# === Access Odoo Web UI ===
+# URL: http://ai-employee-odoo.eastus.azurecontainer.io:8069
+# Login: admin / admin
+
+# === Create Invoice via File Drop ===
+cat > AI_Employee_Vault/Needs_Action/ODOO_invoice.md << 'EOF'
+---
+type: odoo_task
+priority: high
+status: pending
+action: create_invoice
+---
+# Create Invoice
+Customer: Client Name
+Items:
+- 5x Product at $50 each
+EOF
+```
+
+### WhatsApp Commands
+
+```bash
+# === Send Test Notification (from VM) ===
+ssh -i ~/.ssh/id_rsa aiemployee@20.64.238.101 "cd ~/ai_employee && source ~/.local/bin/env && uv run python -c \"
+from pathlib import Path
+from skills.whatsapp_notifier import send_approval_request
+vault = Path('AI_Employee_Vault')
+f = list((vault / 'Pending_Approval').glob('*.md'))[0]
+print(send_approval_request(f, vault))
+\""
+
+# === WhatsApp Reply Commands (on your phone) ===
+# APPROVE <filename>    → Moves file to Approved/, orchestrator executes
+# REJECT <filename>     → Moves file to Rejected/, archived
+
+# === Restart ngrok (if tunnel expired, from VM) ===
+ssh -i ~/.ssh/id_rsa aiemployee@20.64.238.101 "pkill ngrok; nohup ngrok http 5001 --log=/tmp/ngrok.log > /dev/null 2>&1 &"
 ```
 
 ---
@@ -602,52 +741,78 @@ ai_employee/
 
 ## Cloud Infrastructure
 
-| Component | Service | Cost |
-|-----------|---------|------|
-| AI Employee Cloud Zone | Azure VM (Standard_B2s) | ~$35/month (deallocatable) |
-| Odoo 17 + Caddy (HTTPS) | Azure Container Instances | ~$1.50/day (stoppable) |
-| PostgreSQL | Neon DB (serverless) | Free tier (0.5 GB) |
-| Gmail, LinkedIn, Meta, Twitter, WhatsApp APIs | Cloud APIs | Free tier |
+| Component | Service | Region | Status | Cost |
+|-----------|---------|--------|--------|------|
+| AI Employee Cloud Zone | Azure VM (Standard_B2s_v2) | westus2 | Running at `20.64.238.101` | ~$35/month (deallocatable) |
+| Odoo 17 | Azure Container Instances | eastus | `ai-employee-odoo.eastus.azurecontainer.io:8069` | ~$1.50/day (stoppable) |
+| PostgreSQL | Neon DB (serverless) | eastus2 | Active | Free tier (0.5 GB) |
+| WhatsApp Webhook | ngrok tunnel → Flask :5001 on VM | — | Active | Free tier |
+| Gmail API | Google Cloud | — | Active | Free |
+| LinkedIn API | LinkedIn Developer | — | Active | Free |
+| Meta Graph API (FB/IG) | Meta Developer | — | Active | Free |
+| Twitter API v2 | Twitter Developer | — | Active | Free |
+| WhatsApp Business API | Meta Graph API | — | Active | Free (sandbox) |
 
 ```bash
-# Stop Odoo (pause billing):
-az container stop --resource-group ai-employee-rg --name odoo-server
+# === Save Money: Pause Everything ===
 
-# Start again:
-az container start --resource-group ai-employee-rg --name odoo-server
-
-# Stop VM (pause billing):
+# Stop VM (no charges when deallocated):
 az vm deallocate --resource-group ai-employee-rg --name ai-employee-vm
 
-# Start VM:
+# Stop Odoo container (no charges when stopped):
+az container stop --resource-group ai-employee-rg --name odoo-server
+
+# === Before Demo: Start Everything ===
+
+# Start VM (~2 min to boot, service auto-starts):
 az vm start --resource-group ai-employee-rg --name ai-employee-vm
+
+# Start Odoo:
+az container start --resource-group ai-employee-rg --name odoo-server
+
+# Verify everything is running:
+curl -s http://20.64.238.101:8080/health | python -m json.tool
 ```
 
 ---
 
 ## Demo Highlights
 
-### Gold Tier
-1. **File Drop Triage**: Drop any file in `Inbox/` → watchdog detects it → action file created in `Needs_Action/` with auto-classified priority
-2. **Email Processing**: Gmail watcher polls every 2 min → `EMAIL_*.md` in `Needs_Action/` → Claude triages and drafts replies → approval workflow
-3. **Social Media Workflow**: Scheduled drafts (Mon-Thu) → Claude generates content from `Business_Goals.md` → human approves in Obsidian → auto-publishes to FB/IG/LinkedIn/Twitter
-4. **Live Facebook Post**: Published post ID `1009023102288739_122095456215267502` via Meta Graph API
-5. **Live Instagram Post**: Published post ID `17864089473583184` via 2-step media container flow
-6. **Invoice Creation**: "Create invoice for Ali - 5x Widget at $50" → Odoo creates invoice ID 25 on Azure ACI → stored in Neon DB
-7. **Accounting Dashboard**: Real-time: Bank $12,444.87, Product Sales $2,500, 47 accounts, 7 invoices
-8. **CEO Briefing**: Weekly auto-generated `Briefings/YYYY-WXX_CEO_Briefing.md` with KPI tables
-9. **Ralph Wiggum Loop**: Complex task → `.task_state.json` → stop hook blocks Claude exit → continues until all steps done (max 10 iterations)
-10. **DRY_RUN Safety**: Set `DRY_RUN=true` → all actions logged but nothing executes externally
+> Full demo guide with all commands: **[docs/DEMO.md](docs/DEMO.md)**
 
-### Platinum Tier
-11. **Cloud/Local Zones**: `ZONE=cloud` on Azure VM triages and drafts; `ZONE=local` on laptop executes approved actions — zero trust execution model
-12. **Vault Git Sync**: `[cloud] auto-sync` / `[local] auto-sync` commits every 60s — Git as the message bus between zones
-13. **WhatsApp Mobile Approvals**: Pending approval → WhatsApp notification to your phone → reply `APPROVE filename` → webhook moves file → orchestrator executes
-14. **24/7 Operation**: systemd service on Azure VM with `Restart=always` — kill the process, it's back in 10 seconds
-15. **Health Endpoint**: `curl http://VM_IP:8080/health` → JSON status with zone, vault, and per-service health
-16. **Odoo HTTPS**: Caddy reverse proxy auto-provisions Let's Encrypt TLS for the ACI domain
-17. **Nightly DB Backup**: `pg_dump` from Neon DB → `/opt/ai-employee/backups/` with 7-day retention
-18. **Demo Gate**: `bash scripts/demo_gate.sh` → automated end-to-end verification (vault structure, processing, logging, health, git)
+### Bronze Tier (Foundation)
+1. **Obsidian Vault** — 10-folder file-based state machine (`Inbox/` → `Needs_Action/` → `Done/`)
+2. **File Drop Triage** — Drop any file in `Inbox/` → watchdog detects it → action `.md` created with auto-classified priority
+3. **Claude Code Integration** — Claude CLI subprocess with 120s timeout, retry logic, Company Handbook context
+4. **Agent Skills** — 16 slash commands defined in `CLAUDE.md` (e.g., `/process-inbox`, `/triage-file`)
+
+### Silver Tier (Functional Assistant)
+5. **Gmail Watcher** — Polls every 2 min via OAuth 2.0, creates `EMAIL_*.md` in `Needs_Action/`
+6. **LinkedIn Auto-Poster** — Claude generates drafts from `Business_Goals.md` → human approves → API publishes
+7. **Email MCP Server** — `send_email`, `draft_email`, `list_drafts` tools via JSON-RPC 2.0
+8. **Human-in-the-Loop** — `Pending_Approval/` → human moves to `Approved/` or `Rejected/` in Obsidian
+9. **Scheduling** — Gmail 2min, tasks 30s, briefing 8AM, LinkedIn Monday 10AM
+
+### Gold Tier (Autonomous Employee)
+10. **Odoo Accounting on Azure** — Live at `ai-employee-odoo.eastus.azurecontainer.io:8069` — invoices, payments, P&L, 47 accounts
+11. **4 Social Platforms** — LinkedIn + Facebook + Instagram + Twitter — all with draft → approve → publish flow
+12. **Live Facebook Post** — Published post ID `1009023102288739_122095456215267502` via Meta Graph API
+13. **Live Instagram Post** — Published post ID `17864089473583184` via 2-step media container flow
+14. **Invoice Creation** — "Create invoice for Ali - 5x Widget at $50" → Odoo invoice ID 25 → Neon DB
+15. **Accounting Dashboard** — Bank $12,444.87, Product Sales $2,500, 7+ invoices
+16. **CEO Briefing** — Weekly auto-generated KPI dashboard with action items
+17. **Ralph Wiggum Loop** — Stop hook blocks Claude exit until all multi-step tasks complete (max 10 iterations)
+18. **Error Recovery** — Exponential backoff, graceful degradation, `ServiceHealthChecker` singleton
+
+### Platinum Tier (Cloud/Local Split Deployment)
+19. **Cloud Zone (Azure VM)** — Running 24/7 at `20.64.238.101` — triage, drafts, briefings, audit
+20. **Local Zone (Laptop)** — Executes approved actions, WhatsApp notifications — zero-trust model
+21. **Health Endpoint** — [http://20.64.238.101:8080/health](http://20.64.238.101:8080/health) → live JSON status
+22. **WhatsApp Mobile Approvals** — Pending → WhatsApp notification → reply `APPROVE filename` → webhook executes
+23. **Vault Git Sync** — `[cloud] auto-sync` / `[local] auto-sync` commits every 60s — Git as message bus
+24. **24/7 Operation** — systemd + `Restart=always` — kill the process, back in 10 seconds
+25. **Odoo Hardening** — Caddy HTTPS + nightly `pg_dump` backup with 7-day retention
+26. **Demo Gate** — `bash scripts/demo_gate.sh` → automated end-to-end verification
 
 ---
 
