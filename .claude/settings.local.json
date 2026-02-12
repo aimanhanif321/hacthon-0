@@ -15,7 +15,12 @@
       "Bash(gh auth:*)",
       "Bash(export PATH=\"/c/Program Files/GitHub CLI:$PATH\")",
       "Bash(gh repo create:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(ssh-keygen:*)",
+      "Bash(az vm create:*)",
+      "Bash(az account show:*)",
+      "Bash(az rest:*)",
+      "Bash(ssh:*)"
     ]
   },
   "hooks": {
