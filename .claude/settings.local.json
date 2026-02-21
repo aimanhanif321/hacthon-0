@@ -20,7 +20,8 @@
       "Bash(az vm create:*)",
       "Bash(az account show:*)",
       "Bash(az rest:*)",
-      "Bash(ssh:*)"
+      "Bash(ssh:*)",
+      "Bash(az container show:*)"
     ]
   },
   "hooks": {

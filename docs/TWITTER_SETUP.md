@@ -6,7 +6,7 @@ This guide covers configuring the Twitter API v2 for posting tweets.
 
 ## 1. Create a Developer Account
 
-1. Go to https://developer.twitter.com/ and sign up / apply for a developer account
+1. Go to /https://developer.twitter.com and sign up / apply for a developer account
 2. Create a **Project** and an **App** within it
 3. Choose **Free** or **Basic** tier (Free tier allows 1,500 tweets/month)
 

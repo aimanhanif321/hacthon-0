@@ -70,7 +70,7 @@ def post_to_linkedin(text: str, config: dict) -> dict:
         "Authorization": f"Bearer {config['access_token']}",
         "Content-Type": "application/json",
         "X-Restli-Protocol-Version": "2.0.0",
-        "LinkedIn-Version": "202502",
+        "LinkedIn-Version": "202601",
     }
 
     payload = {

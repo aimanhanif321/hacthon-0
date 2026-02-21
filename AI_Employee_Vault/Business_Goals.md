@@ -1,52 +1,16 @@
 ---
-last_updated: 2026-02-10
+last_updated: 2026-02-16
 ---
 
 # Business Goals
 
 ## Mission
-Demonstrate how an AI Employee can automate business operations, communications, and task management.
+Showcase AI Employee automating business workflows and social media content.
 
-## Current Focus Areas
-- Showcase AI-powered workflow automation
-- Build thought leadership on LinkedIn about AI in business
-- Demonstrate the value of human-in-the-loop AI systems
+## Focus Areas
+- AI automation for daily tasks
+- Social media presence (LinkedIn & Instagram)
+- Human-in-the-loop decision making
 
-## Content Themes by Platform
-
-### LinkedIn
-1. **AI Automation**: How AI agents handle routine business tasks
-2. **Productivity**: Tips for integrating AI into daily workflows
-3. **Human-AI Collaboration**: Why the human-in-the-loop matters
-4. **Future of Work**: How autonomous agents change business operations
-
-### Facebook
-1. **Behind the Scenes**: Show the AI Employee in action with real examples
-2. **Business Tips**: Practical advice for small business automation
-3. **Success Stories**: Results and outcomes from AI-assisted operations
-4. **Community**: Engage followers with questions about their automation needs
-
-### Twitter/X
-1. **Quick Tips**: One actionable AI tip per tweet
-2. **Industry News**: React to AI/automation news with a business angle
-3. **Thread Teasers**: Short hooks linking to longer LinkedIn or blog content
-4. **Engagement**: Polls and questions about AI adoption
-
-### Instagram
-1. **Visual Workflows**: Infographics showing automation before/after
-2. **Day in the Life**: Visual stories of the AI Employee's daily work
-3. **Tips & Tricks**: Carousel posts with numbered automation tips
-4. **Team Culture**: Human-AI collaboration moments
-
-## Tone & Voice
-- Professional but approachable across all platforms
-- Use concrete examples over abstract theory
-- Platform-appropriate length: Twitter (280 chars), others (under 1300 chars)
-- Include a call-to-action or question to drive engagement
-- More casual on Twitter and Instagram, more professional on LinkedIn
-
-## Target Audience
-- Business owners and founders
-- Operations managers
-- Tech-savvy professionals interested in AI
-- Small business owners looking to automate
+## Tone
+Professional yet approachable, short captions for Instagram, informative for LinkedIn.
